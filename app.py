@@ -1,18 +1,3 @@
-#!/usr/bin/env python3
-"""
-transliterator_app.py
-
-Single-file Flask app that:
-- Extracts text from images (Tesseract OCR) and auto-selects Tesseract languages based on detected script
-- Detects predominant script and reports detection confidence
-- Uses Aksharamukha for script-to-script transliteration
-- Allows manual override of source script
-- Phrasebook: save/list/delete/download phrase entries (persisted to phrasebooks.json)
-
-Run: python transliterator_app.py
-Open: http://127.0.0.1:5000/
-"""
-
 import os
 import re
 import json
@@ -22,13 +7,11 @@ from flask import Flask, request, jsonify, render_template_string, send_file, ab
 from PIL import Image
 import io
 
-# Try import: aksharamukha transliteration
 try:
     from aksharamukha.transliterate import process as aksha_process
 except Exception:
     aksha_process = None
 
-# Tesseract OCR wrapper
 try:
     import pytesseract
 except Exception:
@@ -37,7 +20,6 @@ except Exception:
 app = Flask(__name__)
 PHRASEBOOK_FILE = "phrasebooks.json"
 
-# UI script mapping (display -> aksharamukha name)
 UI_SCRIPTS = {
     "Devanagari (हिन्दी, मराठी, नेपाली)": "Devanagari",
     "Bengali (বাংলা)": "Bengali",
@@ -69,7 +51,7 @@ UNICODE_RANGES = [
 # Map detected script -> suggested tesseract language code(s)
 # Values are strings accepted by pytesseract's 'lang' param (comma-separated allowed)
 TESS_LANG_SUGGEST = {
-    "Devanagari": "hin",     # Hindi (Devanagari)
+    "Devanagari": "hin",     
     "Bengali": "ben",
     "Gurmukhi": "pan",
     "Gujarati": "guj",
@@ -82,7 +64,6 @@ TESS_LANG_SUGGEST = {
     "ISO": "eng"
 }
 
-# ensure phrasebook persistence file exists
 if not os.path.exists(PHRASEBOOK_FILE):
     with open(PHRASEBOOK_FILE, "w", encoding="utf-8") as f:
         json.dump([], f, ensure_ascii=False, indent=2)
@@ -124,22 +105,18 @@ def ocr_image_with_smart_lang(img: Image.Image):
     if pytesseract is None:
         return {"ok": False, "error": "pytesseract not available. Install pytesseract and Tesseract."}
     try:
-        # 1: initial OCR with eng
         txt0 = pytesseract.image_to_string(img)
     except Exception as e:
         return {"ok": False, "error": f"Tesseract initial OCR failed: {e}"}
 
     txt0 = txt0.strip()
-    # detect
     detected, top_count, total_matched, breakdown, _ = detect_script_with_confidence(txt0)
     suggested_lang = TESS_LANG_SUGGEST.get(detected, "eng")
 
-    # If suggested_lang is not 'eng' and detected confidence is not zero, try re-running with it
     if suggested_lang != "eng":
         try:
             txt1 = pytesseract.image_to_string(img, lang=suggested_lang)
             txt1 = txt1.strip()
-            # if second pass yields more matched chars or non-empty, use it.
             if len(txt1) > len(txt0):
                 used = suggested_lang
                 final_text = txt1
@@ -147,7 +124,7 @@ def ocr_image_with_smart_lang(img: Image.Image):
                 used = suggested_lang
                 final_text = txt1
             else:
-                used = "eng"  # keep original if no improvement
+                used = "eng" 
                 final_text = txt0
         except Exception:
             used = "eng"
@@ -166,7 +143,6 @@ def perform_transliteration(src_script, tgt_script, text):
     """
     if aksha_process is None:
         raise RuntimeError("Aksharamukha is not installed on server. Install with `pip install aksharamukha`.")
-    # If src is ISO but text contains indic script, auto-detect
     if src_script == "ISO":
         detected, top_count, total_matched, breakdown, _ = detect_script_with_confidence(text)
         if detected != "ISO":
@@ -174,7 +150,6 @@ def perform_transliteration(src_script, tgt_script, text):
     return aksha_process(src_script, tgt_script, text)
 
 
-# ---- Phrasebook helpers ----
 def load_phrasebooks():
     try:
         with open(PHRASEBOOK_FILE, "r", encoding="utf-8") as f:
@@ -187,8 +162,6 @@ def save_phrasebooks(pb_list):
     with open(PHRASEBOOK_FILE, "w", encoding="utf-8") as f:
         json.dump(pb_list, f, ensure_ascii=False, indent=2)
 
-
-# ---- Flask routes ----
 
 INDEX_HTML = """
 <!doctype html>
@@ -613,7 +586,6 @@ def api_phrasebook_download_all():
     return send_file(tmp_path, as_attachment=True, download_name=fname)
 
 
-# Run app
 if __name__ == "__main__":
     print("Starting Transliterator app...")
     print("Requirements: system Tesseract + tesseract-language-packs for non-Latin OCR (optional), python packages: flask pillow pytesseract aksharamukha")
